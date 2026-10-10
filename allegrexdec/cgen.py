@@ -56,8 +56,10 @@ class _Emit:
         if isinstance(s, ir.Assign):
             return "%s = %s;" % (self.expr(s.dst), self.expr(s.src))
         if isinstance(s, ir.Call):
-            return "%s();" % self.namer.code(s.target) if s.target is not None \
-                else "(*%s)();" % self.expr(s.expr)
+            args = ", ".join(self.expr(a) for a in (s.args or []))
+            if s.target is not None:
+                return "%s(%s);" % (self.namer.code(s.target), args)
+            return "(*%s)(%s);" % (self.expr(s.expr), args)
         if isinstance(s, ir.Intrinsic):
             call = "%s(%s);" % (s.name, ", ".join(self.expr(a) for a in s.args))
             return call + ("   /* %s */" % s.note if s.note else "")

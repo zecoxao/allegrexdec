@@ -161,6 +161,24 @@ def test_frame_and_pointer():
     print("ok  test_frame_and_pointer")
 
 
+def test_call_arguments():
+    # sub_0:  a0 = 5; jal sub_40; (delay nop); jr ra; nop
+    # sub_40: jr ra; nop
+    words = [0] * 0x12
+    words[0] = 0x24040005          # 0x00 addiu a0, zero, 5
+    words[1] = 0x0C000010          # 0x04 jal 0x40
+    words[2] = 0x00000000          # 0x08 nop (delay slot)
+    words[3] = 0x03E00008          # 0x0C jr ra
+    words[4] = 0x00000000          # 0x10 nop (delay slot)
+    words[0x10] = 0x03E00008       # 0x40 jr ra
+    words[0x11] = 0x00000000       # 0x44 nop
+    prog = decompile_image(_img(words), entries=[0], base=0)
+    text = "\n".join(prog.funcs[0].lines)
+    assert "sub_40(5);" in text, text          # the a0 set-up is folded into the call
+    assert "a0 = 5;" not in text, text          # and removed as a standalone stmt
+    print("ok  test_call_arguments")
+
+
 if __name__ == "__main__":
     test_decode_integer()
     test_branch_target()
@@ -169,4 +187,5 @@ if __name__ == "__main__":
     test_delayslot_and_structuring()
     test_param_return_recovery()
     test_frame_and_pointer()
+    test_call_arguments()
     print("\nall tests passed")

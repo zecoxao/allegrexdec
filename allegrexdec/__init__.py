@@ -14,7 +14,7 @@ kotcrab's ghidra-allegrex SLEIGH.  It runs headless on a PSP ELF/PRX or as an
 IDA plugin on a MIPS database.
 """
 
-from . import decoder, cfg, opt, frame, structure, cgen, loader
+from . import decoder, cfg, opt, frame, callargs, recover, structure, cgen, loader
 from .names import Namer
 
 __version__ = "0.1.0"
@@ -61,10 +61,13 @@ def decompile_image(image, entries, base=0, code_names=None):
     insns, calls = decoder.decode(image, entries=entries, base=base)
     funcs = cfg.build_functions(insns, calls, extra_entries=entries)
     namer = Namer(code_names=code_names)
-    out = {}
-    for entry, f in funcs.items():
+    for f in funcs.values():
         opt.optimize(f)
         frame.rewrite(f)
+    arity = {entry: len(recover.params(f)) for entry, f in funcs.items()}
+    out = {}
+    for entry, f in funcs.items():
+        callargs.rewrite(f, arity)
         tree = structure.structure(f)
         out[entry] = Function(entry, namer.code(entry), f, tree,
                               cgen.generate(f, tree, namer))

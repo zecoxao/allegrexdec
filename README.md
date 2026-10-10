@@ -121,6 +121,12 @@ decoder covers:
   and stack slots become `var_<off>`, but there is no argument-vs-local
   disambiguation beyond the o32 convention. `hi`/`lo`, `sra`, rotates, VFPU and
   coprocessor control remain intrinsics.
+* Call arguments (`foo(a0, a1 …)`) are folded from the `a0`-`a3` set-up the
+  compiler emits, so they reflect what the machine actually passes (often more
+  faithful than a tool without a prototype, which shows a bare `()`). Only the
+  first four register arguments are recovered; stack-passed (5+) arguments, and
+  arguments set in a *different* basic block than the call (e.g. at a loop
+  header), are not folded.
 * NID→name needs a `psplibdoc.xml`; without one, headless output falls back to
   `sub_<addr>`. Inside IDA the plugin always reuses your own names.
 * Branch-*likely* instructions (`beql`, `bc1tl` …) are structured like ordinary
