@@ -128,10 +128,28 @@ def test_delayslot_and_structuring():
     print(text)
 
 
+def test_param_return_recovery():
+    # int f(a0, a1) { return a0 + a1; }
+    #   addu v0, a0, a1   ; jr ra ; nop
+    words = [0x00851021, 0x03E00008, 0x00000000]
+    prog = decompile_image(_img(words), entries=[0], base=0)
+    fn = prog.funcs[0]
+    sig = fn.lines[0]
+    assert sig == "int sub_0(int a0, int a1)", sig
+    assert "return v0;" in "\n".join(fn.lines), fn.lines
+
+    # void g(void) { } -- bare jr ra ; nop (reads/writes nothing)
+    prog = decompile_image(_img([0x03E00008, 0x00000000]), entries=[0], base=0)
+    sig = prog.funcs[0].lines[0]
+    assert sig == "void sub_0(void)", sig
+    print("ok  test_param_return_recovery")
+
+
 if __name__ == "__main__":
     test_decode_integer()
     test_branch_target()
     test_fpu_vfpu()
     test_all_words_no_raise()
     test_delayslot_and_structuring()
+    test_param_return_recovery()
     print("\nall tests passed")

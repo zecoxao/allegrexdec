@@ -18,7 +18,7 @@ decoder → lifter → cfg → opt → structure → cgen
 ## What it produces
 
 ```c
-void sub_70(void)
+int sub_70(int a0)                       // a0 recovered as a parameter (o32 ABI)
 {
     sp = sp - 0x10;
     mem32[sp + 8] = ra;
@@ -33,11 +33,20 @@ void sub_70(void)
         if (s1 == 0xB0) goto loc_158;
         ...
     }
+    return v0;
 }
 ```
 
-MIPS **delay slots** are folded into their owning branch, so the pseudo-C reads
-in source order. GPRs print as the o32 ABI names (`a0..a3`, `t0..t9`, `s0..s7`,
+(That is `int __fastcall sceUmdManInit(int a1)` in Hex-Rays — same parameter and
+return value.)
+
+Function **parameters and return values** are recovered from the MIPS o32 calling
+convention: an argument register (`a0`-`a3`) read before being written is an
+incoming parameter, and a function that leaves a value in `v0` returns `int`. On
+`umdman.prx` this matches IDA's Hex-Rays exactly on the number of functions that
+take parameters (138) and closely on the per-function argument count. MIPS
+**delay slots** are folded into their owning branch, so the pseudo-C reads in
+source order. GPRs print as the o32 ABI names (`a0..a3`, `t0..t9`, `s0..s7`,
 `sp`, `ra` …); `$zero` reads as 0, which turns `addu rd,rs,zero` / `or rd,rs,zero`
 into plain `rd = rs`; the `lui`+`ori`/`addiu` address idiom folds to one
 constant; compare-and-branch folds into relational `if`s; loops become
@@ -97,8 +106,12 @@ decoder covers:
 
 ## Limitations
 
-* No stack-frame or argument reconstruction; `hi`/`lo`, `sra`, rotates, VFPU and
-  coprocessor control are intrinsics.
+* Parameters and return values are recovered (count and presence), but not their
+  C *types* — every argument prints as `int` and there is no stack-frame/local
+  reconstruction or register-to-typed-variable renaming the way Hex-Rays does.
+  `hi`/`lo`, `sra`, rotates, VFPU and coprocessor control are intrinsics.
+* Headless output names functions `sub_<addr>`; inside IDA it reuses your names
+  (so PRX exports show as `sceUmdMan…`). NID-to-name resolution is `prxldr`'s job.
 * Branch-*likely* instructions (`beql`, `bc1tl` …) are structured like ordinary
   branches, and the conditional-call forms (`bgezal`/`bltzal`) are approximated
   as unconditional calls — a minor imprecision in rarely-compiled code.
