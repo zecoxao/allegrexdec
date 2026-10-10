@@ -145,6 +145,22 @@ def test_param_return_recovery():
     print("ok  test_param_return_recovery")
 
 
+def test_frame_and_pointer():
+    # int f(int *a0) { return a0[0]; } with a full prologue/epilogue to hide:
+    #   addiu sp, sp, -0x10 ; sw ra, 8(sp) ; lw v0, 0(a0)
+    #   lw ra, 8(sp) ; addiu sp, sp, 0x10 ; jr ra ; nop
+    words = [0x27BDFFF0, 0xAFBF0008, 0x8C820000,
+             0x8FBF0008, 0x27BD0010, 0x03E00008, 0x00000000]
+    prog = decompile_image(_img(words), entries=[0], base=0)
+    text = "\n".join(prog.funcs[0].lines)
+    assert prog.funcs[0].lines[0] == "int sub_0(int *a0)", prog.funcs[0].lines[0]
+    assert "v0 = mem32[a0];" in text, text
+    assert "return v0;" in text, text
+    # prologue/epilogue and the ra spill must be gone
+    assert "sp =" not in text and "mem32[sp" not in text and "ra =" not in text, text
+    print("ok  test_frame_and_pointer")
+
+
 if __name__ == "__main__":
     test_decode_integer()
     test_branch_target()
@@ -152,4 +168,5 @@ if __name__ == "__main__":
     test_all_words_no_raise()
     test_delayslot_and_structuring()
     test_param_return_recovery()
+    test_frame_and_pointer()
     print("\nall tests passed")

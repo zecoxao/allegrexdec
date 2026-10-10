@@ -98,20 +98,35 @@ def _flat_image(elf):
     return image, base
 
 
-def _module_exports(elf, image, base):
-    """Function entry points from .rodata.sceModuleInfo (prxldr's export walk)."""
-    entries = []
+def _cstr(image, base, va):
+    o = va - base
+    if o < 0 or o >= len(image):
+        return ""
+    end = image.find(b"\x00", o)
+    return image[o:end if end >= 0 else len(image)].decode("latin-1", "replace")
+
+
+def _module_info(elf):
     file_off = None
     for sh in elf.shdr:
         if elf.secname(sh) == PSP_MODULE_INFO_NAME and sh["sh_size"] >= MODINFO.size:
             file_off = sh["sh_offset"]
             break
     if file_off is None and elf.phdr:
-        paddr = elf.phdr[0]["p_paddr"] & 0x0FFFFFFF
-        file_off = paddr
+        file_off = elf.phdr[0]["p_paddr"] & 0x0FFFFFFF
     if file_off is None or file_off + MODINFO.size > len(elf.buf):
+        return None
+    return MODINFO.unpack_from(elf.buf, file_off)
+
+
+def _module_exports(elf, image, base, db=None, names=None):
+    """Function entry points from .rodata.sceModuleInfo (prxldr's export walk);
+    when a NID database is given, also fills ``names`` with {target: name}."""
+    entries = []
+    mi = _module_info(elf)
+    if mi is None:
         return entries
-    flags, name, gp, exports, exp_end, imports, imp_end = MODINFO.unpack_from(elf.buf, file_off)
+    flags, name, gp, exports, exp_end, imports, imp_end = mi
     if not exports or not exp_end or exp_end <= exports:
         return entries
     exp_base = exports
@@ -129,14 +144,56 @@ def _module_exports(elf, image, base):
         v_count = (counts >> 8) & 0xFF
         f_count = (counts >> 16) & 0xFFFF
         total = v_count + f_count
+        libname = _cstr(image, base, name_ptr) if name_ptr else "syslib"
         for i in range(f_count):
+            nid = _u32(image, base, exp_tbl + 4 * i)
             target = _u32(image, base, exp_tbl + 4 * total + 4 * i)
             if target is not None and base <= target < base + len(image):
-                entries.append(target & ~1)
+                target &= ~1
+                entries.append(target)
+                if names is not None and db and nid is not None:
+                    from . import nids as _nids
+                    nm = _nids.lookup(db, libname, nid)
+                    if nm:
+                        names[target] = nm
         if entsize <= 0:
             break
         exp_base += entsize * 4
     return entries
+
+
+def _module_imports(elf, image, base, db, names):
+    """Name imported-function stub addresses (call targets) via their NID."""
+    mi = _module_info(elf)
+    if mi is None or not db:
+        return
+    flags, name, gp, exports, exp_end, imports, imp_end = mi
+    if not imports or not imp_end or imp_end <= imports:
+        return
+    from . import nids as _nids
+    imp_base = imports
+    guard = 0
+    while imp_end - imp_base >= 20 and guard < 4096:
+        guard += 1
+        stub = []
+        for k in range(6):
+            v = _u32(image, base, imp_base + 4 * k)
+            stub.append(v if v is not None else 0)
+        name_ptr, iflags, counts, nid_tbl, func_tbl, var_tbl = stub
+        entsize = counts & 0xFF
+        v_count = (counts >> 8) & 0xFF
+        f_count = (counts >> 16) & 0xFFFF
+        libname = _cstr(image, base, name_ptr) if name_ptr else ""
+        for i in range(f_count):
+            nid = _u32(image, base, nid_tbl + 4 * i)
+            stub_ea = func_tbl + 8 * i          # 8-byte jr/jump stub per import
+            if nid is not None and base <= stub_ea < base + len(image):
+                nm = _nids.lookup(db, libname, nid)
+                if nm:
+                    names[stub_ea & ~1] = nm
+        if entsize <= 0:
+            break
+        imp_base += entsize * 4
 
 
 def _symbols(elf, base, end):
@@ -157,8 +214,11 @@ def _symbols(elf, base, end):
     return entries
 
 
-def load_program(path):
-    """Return (image, base, entries) for *path*."""
+def load_program(path, psplibdoc=None):
+    """Return (image, base, entries, code_names) for *path*.
+
+    code_names maps address -> name for module exports and import stubs, resolved
+    through a psplibdoc.xml NID database when one can be found."""
     data = load(path)
     if _is_elf32le_mips(data):
         try:
@@ -168,17 +228,22 @@ def load_program(path):
         if elf is not None:
             image, base = _flat_image(elf)
             if image is not None:
+                from . import nids as _nids
+                db = _nids.load(input_path=path, explicit=psplibdoc)
+                names = {}
                 end = base + len(image)
                 entries = []
                 if base <= elf.e_entry < end:
                     entries.append(elf.e_entry & ~1)
-                entries += _module_exports(elf, image, base)
+                    names.setdefault(elf.e_entry & ~1, "module_start")
+                entries += _module_exports(elf, image, base, db=db, names=names)
+                _module_imports(elf, image, base, db, names)
                 entries += _symbols(elf, base, end)
                 entries = sorted(set(entries))
                 if not entries:
                     entries = [base]
-                return image, base, entries
-    return data, 0, [0]
+                return image, base, entries, names
+    return data, 0, [0], {}
 
 
 # kept for API parity with the other tools

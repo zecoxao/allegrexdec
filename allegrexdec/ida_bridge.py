@@ -5,7 +5,7 @@ and a 32-bit database).  Reads bytes from the database, uses IDA's function
 boundaries as entry points, and reuses IDA's names.  IDA is imported lazily.
 """
 
-from . import decoder, cfg, opt, structure, cgen
+from . import decoder, cfg, opt, frame, structure, cgen
 from .names import Namer
 from . import Program, Function, BANNER  # noqa: F401
 
@@ -56,6 +56,7 @@ def decompile_program():
     out = {}
     for entry, f in funcs.items():
         opt.optimize(f)
+        frame.rewrite(f)
         tree = structure.structure(f)
         out[entry] = Function(entry, namer.code(entry), f, tree, cgen.generate(f, tree, namer))
     return Program(image, base, insns, out, namer)
@@ -73,6 +74,7 @@ def decompile_one(ea):
         raise RuntimeError("allegrexdec: nothing decoded at 0x%X" % entry)
     namer = IdaNamer()
     opt.optimize(func)
+    frame.rewrite(func)
     tree = structure.structure(func)
     return Function(entry, namer.code(entry), func, tree,
                     cgen.generate(func, tree, namer, banner=BANNER))

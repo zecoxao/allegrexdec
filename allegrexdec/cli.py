@@ -31,11 +31,15 @@ def main(argv=None):
                     help="extra entry point (repeatable)")
     ap.add_argument("--func", type=_int, default=None,
                     help="only emit the function at this address")
+    ap.add_argument("--nids", default=None,
+                    help="path to psplibdoc.xml for NID->name resolution "
+                         "(else $ALLEGREXDEC_PSPLIBDOC / next to the input / cwd)")
     ap.add_argument("--no-banner", action="store_true")
     args = ap.parse_args(argv)
 
     prog = decompile_file(args.rom, base=args.base,
-                          extra_entries=tuple(args.entry) if args.entry else ())
+                          extra_entries=tuple(args.entry) if args.entry else (),
+                          psplibdoc=args.nids)
 
     if args.func is not None:
         f = prog.funcs.get(args.func)

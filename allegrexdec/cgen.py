@@ -13,6 +13,7 @@ jumps render as ``JUMPOUT(addr)``.
 from . import ir
 from . import structure as S
 from . import recover
+from . import frame
 
 
 class _Emit:
@@ -145,6 +146,10 @@ def generate(func, tree, namer, banner=None):
     out = list(banner) if banner else []
     out.append(sig)
     out.append("{")
+    decls = frame.local_decls(func)
+    if decls:
+        out.extend(decls)
+        out.append("")
     out.extend(body)
     out.append("}")
     return out

@@ -65,8 +65,14 @@ names them), or a raw code blob with an explicit base:
 ```
 python -m allegrexdec umdman.prx -o umdman.c
 python -m allegrexdec umdman.prx --func 0x70
+python -m allegrexdec umdman.prx --nids psplibdoc.xml      # resolve export/import names
 python -m allegrexdec boot.bin --base 0x8804000 --entry 0x8804000
 ```
+
+With a `psplibdoc.xml` (found next to the input, via `--nids`, or
+`$ALLEGREXDEC_PSPLIBDOC`) the module's exported and imported functions are named
+from their NIDs — `sceUmdManInit` instead of `sub_8804070` — the same database
+`prxldr` uses.
 
 **As an IDA plugin** — open the module with the MIPS/Allegrex processor (the
 companion [`prxldr`](https://github.com/zecoxao/prxldr_python) loader selects
@@ -106,12 +112,17 @@ decoder covers:
 
 ## Limitations
 
-* Parameters and return values are recovered (count and presence), but not their
-  C *types* — every argument prints as `int` and there is no stack-frame/local
-  reconstruction or register-to-typed-variable renaming the way Hex-Rays does.
-  `hi`/`lo`, `sra`, rotates, VFPU and coprocessor control are intrinsics.
-* Headless output names functions `sub_<addr>`; inside IDA it reuses your names
-  (so PRX exports show as `sceUmdMan…`). NID-to-name resolution is `prxldr`'s job.
+* Type inference is light: a parameter or local is `int`, or `int *` when it is
+  dereferenced (tracked through single-copy aliases), and stack locals are typed
+  `char`/`short`/`int` by access width. It does **not** reach Hex-Rays depth —
+  no multi-level pointers (`char **`), no `__int16`/`BOOL`/struct recovery, no
+  overlapping-slot coalescing or full register-to-variable renaming.
+* The prologue/epilogue, frame-pointer setup and callee-saved spills are hidden
+  and stack slots become `var_<off>`, but there is no argument-vs-local
+  disambiguation beyond the o32 convention. `hi`/`lo`, `sra`, rotates, VFPU and
+  coprocessor control remain intrinsics.
+* NID→name needs a `psplibdoc.xml`; without one, headless output falls back to
+  `sub_<addr>`. Inside IDA the plugin always reuses your own names.
 * Branch-*likely* instructions (`beql`, `bc1tl` …) are structured like ordinary
   branches, and the conditional-call forms (`bgezal`/`bltzal`) are approximated
   as unconditional calls — a minor imprecision in rarely-compiled code.

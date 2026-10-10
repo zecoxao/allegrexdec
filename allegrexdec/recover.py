@@ -139,8 +139,86 @@ def returns_value(func):
     return explicit and bool(defs & seen)
 
 
+def _mem_bases(e, out):
+    """register names used as a memory base in expression *e*."""
+    if isinstance(e, ir.Mem) and isinstance(e.addr, ir.Expr):
+        a = e.addr
+        if isinstance(a, ir.Reg):
+            out.add(a.name)
+        elif isinstance(a, ir.Bin) and a.op == "+" and isinstance(a.l, ir.Reg):
+            out.add(a.l.name)
+        _mem_bases(a, out)
+    elif isinstance(e, ir.Bin):
+        _mem_bases(e.l, out); _mem_bases(e.r, out)
+    elif isinstance(e, ir.Un):
+        _mem_bases(e.e, out)
+    elif isinstance(e, ir.IntrExpr):
+        for a in e.args:
+            _mem_bases(a, out)
+    return out
+
+
+def _dst_bases(s, bases):
+    if isinstance(s, ir.Assign):
+        _mem_bases(s.src, bases)
+        if isinstance(s.dst, ir.Mem):
+            if isinstance(s.dst.addr, ir.Reg):
+                bases.add(s.dst.addr.name)
+            elif isinstance(s.dst.addr, ir.Bin) and isinstance(s.dst.addr.l, ir.Reg):
+                bases.add(s.dst.addr.l.name)
+            _mem_bases(s.dst, bases)
+    elif isinstance(s, ir.Branch):
+        _mem_bases(s.cexpr, bases)
+    elif isinstance(s, ir.Intrinsic):
+        for a in s.args:
+            _mem_bases(a, bases)
+    elif isinstance(s, ir.Call) and s.expr is not None:
+        _mem_bases(s.expr, bases)
+    return bases
+
+
+def _pointer_params(func, ps):
+    """A parameter is typed as a pointer when it (or a register that carries its
+    value through single copies) is used as a memory base.  Tracking copies lets
+    the common ``s0 = a0; ... lw (s0)`` idiom still mark ``a0`` as a pointer."""
+    if not ps:
+        return set()
+    # how many times is each register assigned?
+    defcount = {}
+    for b in func.blocks.values():
+        for s in b.stmts:
+            if isinstance(s, ir.Assign) and isinstance(s.dst, ir.Reg):
+                defcount[s.dst.name] = defcount.get(s.dst.name, 0) + 1
+    # alias each single-def register back to the parameter it copies (fixpoint)
+    alias = {p: p for p in ps}
+    for _ in range(6):
+        changed = False
+        for b in func.blocks.values():
+            for s in b.stmts:
+                if (isinstance(s, ir.Assign) and isinstance(s.dst, ir.Reg)
+                        and isinstance(s.src, ir.Reg)
+                        and s.src.name in alias and defcount.get(s.dst.name, 0) == 1
+                        and s.dst.name not in alias):
+                    alias[s.dst.name] = alias[s.src.name]
+                    changed = True
+        if not changed:
+            break
+    # a param whose alias set is dereferenced anywhere is a pointer
+    ptr = set()
+    for b in func.blocks.values():
+        for s in b.stmts:
+            bases = set()
+            _dst_bases(s, bases)
+            for reg in bases:
+                root = alias.get(reg)
+                if root in ps:
+                    ptr.add(root)
+    return ptr
+
+
 def signature(func, name):
     ps = params(func)
     ret = "int" if returns_value(func) else "void"
-    args = ", ".join("int %s" % p for p in ps) if ps else "void"
+    ptr = _pointer_params(func, ps)
+    args = ", ".join(("int *%s" % p if p in ptr else "int %s" % p) for p in ps) if ps else "void"
     return "%s %s(%s)" % (ret, name, args), ps, ret == "int"
