@@ -68,7 +68,12 @@ processor `psp`/`mipsl` and a 32-bit database), then drop
 | Hotkey | Action |
 | --- | --- |
 | `Ctrl-Shift-S` | decompile the function under the cursor |
-| `Ctrl-F5` | decompile the whole database (and offer to save it) |
+| `Ctrl-Shift-A` | decompile the whole database (and offer to save it) |
+
+The family's shared "decompile all" is `Ctrl-F5`, but on a MIPS database that
+hotkey belongs to the licensed Hex-Rays MIPS decompiler, so allegrexdec uses
+`Ctrl-Shift-A` instead (`Ctrl-Shift-S` for one function is unaffected — Hex-Rays
+uses `F5` for that).
 
 The viewer is theme-highlighted and double-click navigates. Inside IDA the
 output reuses whatever names you have applied.

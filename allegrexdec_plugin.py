@@ -8,7 +8,11 @@ Open the PSP ELF/PRX with a MIPS/Allegrex processor -- the companion ``prxldr``
 loader selects processor ``psp``/``mipsl`` and a 32-bit database:
 
     Ctrl-Shift-S   decompile the function under the cursor
-    Ctrl-F5        decompile every function in the database
+    Ctrl-Shift-A   decompile every function in the database
+
+The family's "decompile all" is normally Ctrl-F5, but on a MIPS database that
+hotkey belongs to the licensed Hex-Rays MIPS decompiler, so allegrexdec uses
+Ctrl-Shift-A instead (Ctrl-Shift-S for one function stays, as Hex-Rays uses F5).
 """
 
 import os
@@ -26,7 +30,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 HOTKEY_ONE = "Ctrl-Shift-S"
-HOTKEY_ALL = "Ctrl-F5"
+HOTKEY_ALL = "Ctrl-Shift-A"   # NOT Ctrl-F5: the Hex-Rays MIPS decompiler owns that
 
 _views = []
 _hotkeys = []
